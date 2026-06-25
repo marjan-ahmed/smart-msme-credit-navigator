@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Upload,
@@ -29,6 +29,22 @@ interface SidebarProps {
 
 export default function DashboardSidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) setUser(JSON.parse(stored));
+  }, []);
+
+  const userName = user?.name || "User";
+  const initials = userName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  const handleSignOut = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    router.push("/login");
+  };
 
   return (
     <>
@@ -95,14 +111,14 @@ export default function DashboardSidebar({ isOpen, onClose }: SidebarProps) {
         <div className="p-4 border-t border-white/10">
           <div className="flex items-center gap-3 px-4 py-3">
             <div className="w-9 h-9 bg-teal/20 rounded-lg flex items-center justify-center">
-              <span className="text-teal font-semibold text-sm">AK</span>
+              <span className="text-teal font-semibold text-sm">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Ahmed Khan</p>
-              <p className="text-[11px] text-white/50 truncate">Karachi Trading Co.</p>
+              <p className="text-sm font-medium truncate">{userName}</p>
+              <p className="text-[11px] text-white/50 truncate">{user?.email || ""}</p>
             </div>
           </div>
-          <button className="flex items-center gap-3 px-4 py-2.5 w-full text-white/50 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-sm">
+          <button onClick={handleSignOut} className="flex items-center gap-3 px-4 py-2.5 w-full text-white/50 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-sm">
             <LogOut className="w-4 h-4" />
             Sign Out
           </button>

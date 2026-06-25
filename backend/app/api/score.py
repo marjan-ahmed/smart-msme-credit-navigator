@@ -1,6 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Header
 from app.core.database import get_db
 from app.services.credit_score import credit_score_service
+from app.core.auth_utils import decode_access_token
+from typing import Optional
 import uuid, shutil, os
 
 router = APIRouter()
@@ -50,8 +52,36 @@ async def get_transactions():
     return {"transactions": transactions}
 
 @router.get("/user/profile")
-async def get_profile():
-    return {
-        "user": {"id": "demo", "name": "Demo User", "email": "segademo@gmail.com", "type": "sme"},
-        "score": {"score": 85, "factors": {}}
-    }
+async def get_profile(authorization: Optional[str] = Header(None)):
+    user_data = {"id": "demo", "name": "Demo User", "email": "segademo@gmail.com", "type": "sme"}
+
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = decode_access_token(token)
+        if payload:
+            db = get_db()
+            user = await db.users.find_one({"email": payload.get("email")})
+            if user:
+                user_data = {
+                    "id": str(user["_id"]),
+                    "name": user["name"],
+                    "email": user["email"],
+                    "type": user["type"],
+                }
+
+                latest_score = await db.scores.find_one(
+                    {"fileId": {"$exists": True}},
+                    sort=[("_id", -1)]
+                )
+                if latest_score:
+                    return {
+                        "user": user_data,
+                        "score": {
+                            "score": latest_score.get("score", 0),
+                            "factors": latest_score.get("factors", {}),
+                            "recommendations": latest_score.get("recommendations", []),
+                            "potential_score": latest_score.get("potential_score", 0),
+                        }
+                    }
+
+    return {"user": user_data, "score": {"score": 0, "factors": {}, "recommendations": [], "potential_score": 0}}

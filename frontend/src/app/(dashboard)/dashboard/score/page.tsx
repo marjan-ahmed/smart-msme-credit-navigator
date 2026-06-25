@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle,
@@ -10,68 +11,20 @@ import {
   TrendingUp,
   ArrowUpRight,
 } from "lucide-react";
+import { getUserProfile } from "@/lib/api";
 
-const scoreFactors = [
-  {
-    name: "Cash Flow Regularity",
-    score: 85,
-    weight: "35%",
-    description: "Consistent monthly inflows indicate stable business operations",
-    status: "good",
-  },
-  {
-    name: "Revenue Trend",
-    score: 72,
-    weight: "25%",
-    description: "Revenue growing steadily over the past 6 months",
-    status: "good",
-  },
-  {
-    name: "Expense Management",
-    score: 68,
-    weight: "20%",
-    description: "Expense ratio slightly high, room for improvement",
-    status: "warning",
-  },
-  {
-    name: "Business Longevity",
-    score: 90,
-    weight: "10%",
-    description: "3+ years of business history demonstrates stability",
-    status: "good",
-  },
-  {
-    name: "Digital Footprint",
-    score: 65,
-    weight: "10%",
-    description: "Digital transaction records available and verified",
-    status: "warning",
-  },
-];
+interface ScoreFactor {
+  score: number;
+  weight: number;
+  name: string;
+}
 
-const recommendations = [
-  {
-    priority: "high",
-    title: "Reduce expense ratio below 65%",
-    description:
-      "Your current expense ratio is 72%. Reducing operational costs will significantly improve your score.",
-    impact: "+8 points",
-  },
-  {
-    priority: "medium",
-    title: "Provide 6+ months of bank statements",
-    description:
-      "More historical data improves accuracy of cash flow analysis.",
-    impact: "+5 points",
-  },
-  {
-    priority: "low",
-    title: "Add digital payment records",
-    description:
-      "Connect JazzCash or Easypaisa accounts to strengthen digital footprint score.",
-    impact: "+3 points",
-  },
-];
+interface ScoreData {
+  score: number;
+  factors: Record<string, ScoreFactor>;
+  recommendations: string[];
+  potential_score: number;
+}
 
 const getScoreColor = (score: number) => {
   if (score >= 80) return "text-teal";
@@ -91,21 +44,71 @@ const getRiskLevel = (score: number) => {
   return { label: "High Risk", icon: XCircle, color: "coral" };
 };
 
-const overallScore = 76;
-const risk = getRiskLevel(overallScore);
-
 export default function ScorePage() {
+  const [scoreData, setScoreData] = useState<ScoreData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchScore = async () => {
+      try {
+        const storedScore = localStorage.getItem("lastScore");
+        if (storedScore) {
+          setScoreData(JSON.parse(storedScore));
+        } else {
+          const profile = await getUserProfile();
+          if (profile.score?.score > 0) {
+            setScoreData(profile.score);
+          }
+        }
+      } catch {
+        const storedScore = localStorage.getItem("lastScore");
+        if (storedScore) setScoreData(JSON.parse(storedScore));
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchScore();
+  }, []);
+
+  const overallScore = scoreData?.score || 0;
+  const factors = scoreData?.factors ? Object.values(scoreData.factors) : [];
+  const recommendations = scoreData?.recommendations || [];
+  const potentialScore = scoreData?.potential_score || 0;
+  const risk = getRiskLevel(overallScore);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (overallScore === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="font-display font-bold text-2xl text-ink">Credit Score Report</h1>
+          <p className="text-muted text-sm mt-1">Upload data to generate your credit score.</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-slate-dark p-12 text-center">
+          <CreditCard className="w-12 h-12 text-muted-light mx-auto mb-4" />
+          <h2 className="font-display font-semibold text-lg text-ink mb-2">No Score Yet</h2>
+          <p className="text-sm text-muted mb-6">Upload a CSV, Excel, or WhatsApp export file to generate your credit score.</p>
+          <a href="/dashboard/upload" className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal text-ink font-semibold text-sm rounded-lg hover:bg-teal-hover transition-colors">
+            Upload Data
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display font-bold text-2xl text-ink">
-            Credit Score Report
-          </h1>
-          <p className="text-muted text-sm mt-1">
-            Detailed analysis of your creditworthiness based on uploaded data.
-          </p>
+          <h1 className="font-display font-bold text-2xl text-ink">Credit Score Report</h1>
+          <p className="text-muted text-sm mt-1">Detailed analysis of your creditworthiness based on uploaded data.</p>
         </div>
         <div className="flex items-center gap-3">
           <button className="flex items-center gap-2 px-4 py-2 bg-surface border border-slate-dark rounded-lg text-sm font-medium text-ink hover:bg-slate transition-colors">
@@ -119,9 +122,7 @@ export default function ScorePage() {
         </div>
       </div>
 
-      {/* Score overview */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main score */}
         <div className="bg-surface rounded-xl border border-slate-dark p-8 text-center">
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
@@ -130,35 +131,18 @@ export default function ScorePage() {
             className="relative w-40 h-40 mx-auto mb-6"
           >
             <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-              <circle
-                cx="50"
-                cy="50"
-                r="42"
-                fill="none"
-                stroke="#E2E8F0"
-                strokeWidth="8"
-              />
+              <circle cx="50" cy="50" r="42" fill="none" stroke="#E2E8F0" strokeWidth="8" />
               <motion.circle
-                cx="50"
-                cy="50"
-                r="42"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="8"
-                strokeLinecap="round"
+                cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 42}`}
                 initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
-                animate={{
-                  strokeDashoffset: 2 * Math.PI * 42 * (1 - overallScore / 100),
-                }}
+                animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - overallScore / 100) }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
                 className={getScoreColor(overallScore)}
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-mono text-4xl font-bold text-ink">
-                {overallScore}
-              </span>
+              <span className="font-mono text-4xl font-bold text-ink">{overallScore}</span>
               <span className="text-muted text-xs">/100</span>
             </div>
           </motion.div>
@@ -167,18 +151,13 @@ export default function ScorePage() {
             <risk.icon className={`w-5 h-5 text-${risk.color}`} />
             <span className={`font-semibold text-${risk.color}`}>{risk.label}</span>
           </div>
-          <p className="text-xs text-muted">
-            Updated 3 hours ago based on 24 documents
-          </p>
+          <p className="text-xs text-muted">Based on uploaded transaction data</p>
         </div>
 
-        {/* Factor breakdown */}
         <div className="lg:col-span-2 bg-surface rounded-xl border border-slate-dark p-6">
-          <h2 className="font-display font-semibold text-base text-ink mb-5">
-            Score Factors
-          </h2>
+          <h2 className="font-display font-semibold text-base text-ink mb-5">Score Factors</h2>
           <div className="space-y-4">
-            {scoreFactors.map((factor, index) => (
+            {factors.map((factor, index) => (
               <motion.div
                 key={factor.name}
                 initial={{ opacity: 0, x: -20 }}
@@ -188,7 +167,7 @@ export default function ScorePage() {
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-ink">{factor.name}</span>
-                    <span className="text-[10px] text-muted">({factor.weight})</span>
+                    <span className="text-[10px] text-muted">({Math.round(factor.weight * 100)}%)</span>
                   </div>
                   <span className={`font-mono text-sm font-semibold ${getScoreColor(factor.score)}`}>
                     {factor.score}/100
@@ -202,87 +181,80 @@ export default function ScorePage() {
                     className={`h-full ${getScoreBg(factor.score)} rounded-full`}
                   />
                 </div>
-                <p className="text-[11px] text-muted">{factor.description}</p>
+              </motion.div>
+            ))}
+            {factors.length === 0 && (
+              <p className="text-sm text-muted">No factors calculated yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface rounded-xl border border-slate-dark p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-display font-semibold text-base text-ink">Recommendations</h2>
+        </div>
+        {recommendations.length > 0 ? (
+          <div className="space-y-3">
+            {recommendations.map((rec, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 + index * 0.1 }}
+                className="flex items-start gap-3 p-4 bg-slate rounded-xl"
+              >
+                <CheckCircle className="w-5 h-5 text-teal mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-ink">{rec}</p>
               </motion.div>
             ))}
           </div>
-        </div>
+        ) : (
+          <p className="text-sm text-muted">No recommendations yet. Upload data to get personalized tips.</p>
+        )}
       </div>
 
-      {/* Recommendations */}
-      <div className="bg-surface rounded-xl border border-slate-dark p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display font-semibold text-base text-ink">
-            Recommendations
-          </h2>
-          <span className="text-xs text-muted">Potential impact on your score</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {recommendations.map((rec, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 + index * 0.1 }}
-              className="p-4 bg-slate rounded-xl"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <span
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
-                    rec.priority === "high"
-                      ? "bg-coral/10 text-coral"
-                      : rec.priority === "medium"
-                      ? "bg-amber/10 text-amber"
-                      : "bg-teal/10 text-teal"
-                  }`}
-                >
-                  {rec.priority.toUpperCase()}
-                </span>
-                <span className="text-[11px] text-teal font-medium flex items-center gap-1">
-                  <ArrowUpRight className="w-3 h-3" />
-                  {rec.impact}
-                </span>
-              </div>
-              <h3 className="font-medium text-sm text-ink mb-1">{rec.title}</h3>
-              <p className="text-xs text-muted leading-relaxed">{rec.description}</p>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Comparison */}
-      <div className="bg-gradient-to-br from-ink to-ink/90 rounded-xl p-6 text-white">
-        <div className="flex items-center gap-3 mb-4">
-          <TrendingUp className="w-5 h-5 text-teal" />
-          <h2 className="font-display font-semibold text-base">
-            Score Potential
-          </h2>
-        </div>
-        <p className="text-sm text-white/70 mb-4">
-          By following the recommendations above, your score could improve from{" "}
-          <span className="text-white font-semibold">76</span> to{" "}
-          <span className="text-teal font-semibold">92</span> within 3 months.
-        </p>
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-3 bg-white/10 rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: "76%" }}
-              transition={{ duration: 1, delay: 0.5 }}
-              className="h-full bg-amber rounded-full"
-            />
+      {potentialScore > overallScore && (
+        <div className="bg-gradient-to-br from-ink to-ink/90 rounded-xl p-6 text-white">
+          <div className="flex items-center gap-3 mb-4">
+            <TrendingUp className="w-5 h-5 text-teal" />
+            <h2 className="font-display font-semibold text-base">Score Potential</h2>
           </div>
-          <span className="text-sm font-mono">76 → 92</span>
-          <div className="flex-1 h-3 bg-white/10 rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: "92%" }}
-              transition={{ duration: 1, delay: 0.8 }}
-              className="h-full bg-teal rounded-full"
-            />
+          <p className="text-sm text-white/70 mb-4">
+            By following the recommendations above, your score could improve from{" "}
+            <span className="text-white font-semibold">{overallScore}</span> to{" "}
+            <span className="text-teal font-semibold">{potentialScore}</span>.
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-3 bg-white/10 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${overallScore}%` }}
+                transition={{ duration: 1, delay: 0.5 }}
+                className="h-full bg-amber rounded-full"
+              />
+            </div>
+            <span className="text-sm font-mono">{overallScore} → {potentialScore}</span>
+            <div className="flex-1 h-3 bg-white/10 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${potentialScore}%` }}
+                transition={{ duration: 1, delay: 0.8 }}
+                className="h-full bg-teal rounded-full"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+function CreditCard(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect width="20" height="14" x="2" y="5" rx="2" />
+      <line x1="2" x2="22" y1="10" y2="10" />
+    </svg>
   );
 }

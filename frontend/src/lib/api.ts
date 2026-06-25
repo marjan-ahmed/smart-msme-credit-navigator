@@ -46,3 +46,12 @@ export async function getTransactions() {
   if (!res.ok) throw new Error("Failed to fetch transactions");
   return res.json();
 }
+
+export async function getUserProfile() {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const res = await fetch(`${API_URL}/api/user/profile`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+}

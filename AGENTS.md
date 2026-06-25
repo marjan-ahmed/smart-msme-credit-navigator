@@ -28,10 +28,10 @@ An AI-powered platform that **transforms informal SME business data into bank-re
 1. **SME Owner** signs up and selects "SME Owner" account type
 2. They **upload their business data** — can be:
    - WhatsApp chat exports (text files with invoices)
-   - Receipt/invoice photos (OCR extracts data)
-   - Excel/CSV transaction logs
-3. **AI processes the data** — extracts transactions, categorizes income/expenses, identifies patterns
-4. **Credit score is generated** using 5 factors (see below)
+   - Receipt/invoice photos (OCR extracts data via pytesseract)
+   - Excel/CSV transaction logs (parsed via Pandas)
+3. **Backend processes the data** — extracts transactions, categorizes income/expenses, identifies patterns
+4. **Credit score is generated** using 5-factor weighted scoring
 5. SME gets a **digital credit profile** they can share with banks
 6. **Bank** can log in, view the credit profile, and make lending decisions
 
@@ -55,9 +55,15 @@ We use a **5-factor weighted scoring system**. Each factor has a weight that con
 | **Business Longevity** | 10% | How long has the business been operating? Older = more stable |
 | **Digital Footprint** | 10% | How digitized are their transactions? Digital records = easier to verify |
 
-### Scoring Logic (for Saad to implement)
+### Scoring Logic (implemented in `backend/app/services/credit_score.py`)
 
 ```
+Cash Flow:  min(100, num_income_transactions * 10)
+Revenue:    min(100, total_income / 10000 * 100)
+Expense:    min(100, (total_income / (total_expense + 1)) * 20)
+Longevity:  60 (hardcoded placeholder)
+Digital:    min(100, total_transactions * 5)
+
 Final Score = (CashFlow × 0.35) + (Revenue × 0.25) + (Expense × 0.20) + (Longevity × 0.10) + (Digital × 0.10)
 ```
 
@@ -66,6 +72,8 @@ Score ranges:
 - **60-79**: Good — may need some documentation
 - **40-59**: Fair — needs improvement before bank approval
 - **0-39**: Poor — significant financial issues
+
+**Note**: This is rule-based, not AI/ML. The scoring is simple math for hackathon simplicity + explainability.
 
 ---
 
@@ -81,33 +89,36 @@ Score ranges:
 - **Fonts**: Space Grotesk (display), DM Sans (body), JetBrains Mono (mono)
 - **Deployed at**: https://sega-smart-credit.vercel.app
 
-### Backend (Structure done — Saad to implement)
+### Backend (DONE — working with MongoDB)
 - **Framework**: FastAPI (Python)
 - **Package Manager**: uv
 - **Server**: Uvicorn
-- **Data Processing**: Pandas
-- **OCR**: For receipt/invoice extraction
-- **Storage**: In-memory Python dict (NO database — hackathon constraint)
+- **Database**: MongoDB (via motor async driver)
+- **Auth**: JWT tokens (python-jose) + bcrypt password hashing
+- **Data Processing**: Pandas (CSV/Excel), pytesseract (OCR), regex (WhatsApp)
 - **Config**: pydantic-settings + .env file
+- **Python**: 3.11+
 
 ### Backend Directory Structure
 ```
 backend/
-├── main.py              # FastAPI app with CORS, route includes
-├── pyproject.toml       # uv project config
-├── .env                 # Environment variables
+├── main.py              # FastAPI app with CORS, route includes, lifespan
+├── pyproject.toml       # uv project config + dependencies
+├── .env                 # Environment variables (MONGODB_URL, SECRET_KEY, etc.)
 ├── .gitignore           # Python gitignore
 ├── app/
 │   ├── api/
-│   │   ├── auth.py      # Login/signup endpoints (PLACEHOLDER)
-│   │   └── score.py     # Upload, score, transactions, profile (PLACEHOLDER)
+│   │   ├── auth.py      # Login/signup endpoints (JWT + bcrypt)
+│   │   └── score.py     # Upload, score, transactions, profile endpoints
 │   ├── models/
-│   │   ├── user.py      # User, Token, UserCreate Pydantic models
-│   │   └── business.py  # Transaction, CreditScore, FileUpload models
+│   │   ├── user.py      # UserCreate, UserLogin, UserOut, Token models
+│   │   └── business.py  # Transaction, FactorScore, CreditScore, FileUpload models
 │   ├── services/
-│   │   └── credit_score.py  # CreditScoreService with 5-factor logic
+│   │   └── credit_score.py  # CreditScoreService: OCR, CSV, Excel, WhatsApp extraction + scoring
 │   └── core/
-│       └── config.py    # Settings via pydantic-settings
+│       ├── config.py    # Settings via pydantic-settings (MONGODB_URL, SECRET_KEY, etc.)
+│       ├── database.py  # MongoDB connection (motor async client)
+│       └── auth_utils.py # hash_password, verify_password, create_access_token, decode_access_token
 ```
 
 ---
@@ -126,10 +137,10 @@ frontend/src/
 │   └── (dashboard)/            # Route group — WITH sidebar
 │       ├── layout.tsx          # Dashboard layout: responsive sidebar + header
 │       └── dashboard/
-│           ├── page.tsx        # Overview: stats, score breakdown, activity
-│           ├── upload/page.tsx # File upload with drag-drop zone
-│           ├── score/page.tsx  # Credit score report + factor breakdown
-│           ├── transactions/page.tsx  # Transaction list (table + cards)
+│           ├── page.tsx        # Overview: REAL data from backend (profile + score + transactions)
+│           ├── upload/page.tsx # File upload with drag-drop → calls backend upload + score
+│           ├── score/page.tsx  # Credit score report: REAL data from backend or localStorage
+│           ├── transactions/page.tsx  # Transaction list: REAL data from backend
 │           └── settings/page.tsx      # Settings placeholder
 └── components/
     ├── ui/
@@ -138,7 +149,7 @@ frontend/src/
     │   ├── Navbar.tsx          # Landing page nav (Login → /login, Request Demo → /signup)
     │   └── Footer.tsx          # Footer with links
     ├── dashboard/
-    │   ├── Sidebar.tsx         # Responsive sidebar (slide-in mobile, fixed desktop)
+    │   ├── Sidebar.tsx         # Responsive sidebar + REAL user name from localStorage + working sign out
     │   └── Header.tsx          # Responsive header with hamburger + search
     ├── sections/
     │   ├── Hero.tsx            # Hero with animated SVG score gauge, particles
@@ -183,7 +194,7 @@ frontend/src/
 
 ## API Contract (Frontend ↔ Backend)
 
-The frontend expects these endpoints. Backend must implement them exactly:
+All endpoints are implemented and connected.
 
 ### Auth
 ```
@@ -221,12 +232,21 @@ GET /api/transactions
   Response: { transactions: [{ id, date, amount, description, type, category }] }
 
 GET /api/user/profile
-  Response: { user: { id, name, email, type }, score: { score, factors } }
+  Headers: Authorization: Bearer <token>
+  Response: { user: { id, name, email, type }, score: { score, factors, recommendations, potential_score } }
+```
+
+### Frontend API Client
+All API calls are in `frontend/src/lib/api.ts`. Base URL:
+```ts
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 ```
 
 ### CORS Configuration
-Frontend runs on `http://localhost:3000` (dev) and `https://sega-smart-credit.vercel.app` (prod).
-Backend must allow both origins.
+Backend allows:
+- `http://localhost:3000` (dev)
+- `https://sega-smart-credit.vercel.app` (prod Vercel)
+- Additional origins via `FRONTEND_URL` env var
 
 ---
 
@@ -244,12 +264,13 @@ For hackathon judges to demo without creating accounts:
 
 - **Duration**: 48 hours
 - **Team**: 3 people
-  - **Sufyan** (you) — Frontend (DONE ✅)
-  - **Saad** — Backend (structure ready, needs implementation)
+  - **Sufyan** — Frontend (DONE ✅)
+  - **Saad** — Backend (DONE ✅ — auth, upload, scoring, MongoDB)
   - **Marjan** — Data & Integration (demo data, testing)
-- **No database**: In-memory Python dict storage only
-- **No real auth**: JWT tokens are placeholder strings
-- **Deployment**: Vercel (frontend) + FastAPI Cloud or similar (backend)
+- **Database**: MongoDB (via motor async driver) — NOT in-memory
+- **Auth**: Real JWT tokens with bcrypt password hashing
+- **Deployment**: Vercel (frontend) + FastAPI Cloud (backend, public beta)
+- **Scoring**: Rule-based math (not AI/ML) for hackathon simplicity
 
 ---
 
@@ -282,6 +303,17 @@ For hackathon judges to demo without creating accounts:
 - Root `.npmrc` has `shamefully-hoist=true` — critical for module resolution
 - If you get module not found errors, run `pnpm install` from `frontend/` directory
 
+### Windows + Python Emoji Encoding
+- **CRITICAL**: Never use emoji characters in Python `print()` statements on Windows
+- Windows cp1252 encoding can't encode characters like `✅`, `🔌`
+- Use plain text instead: `print("Connected to MongoDB")` not `print("✅ Connected to MongoDB")`
+- This applies to ALL Python print statements in the backend
+
+### MongoDB Connection
+- Default: `mongodb://localhost:27017` (local dev)
+- Production: Set `MONGODB_URL` env var to cloud MongoDB Atlas connection string
+- Database name: `smart_msme` (set via `DATABASE_NAME` env var)
+
 ---
 
 ## Quick Commands
@@ -296,37 +328,63 @@ pnpm lint             # ESLint check
 # Backend (from backend/ directory)
 cd backend
 uv sync               # Install dependencies
-uv run main.py        # Run dev server on localhost:8000
+uv run python -m uvicorn main:app --host 127.0.0.1 --port 8000  # Run dev server
 uvicorn main:app --reload  # Alternative run command
+
+# Deploy to FastAPI Cloud
+cd backend
+fastapi login         # Authenticate (opens browser)
+fastapi deploy        # Deploy to cloud
+fastapi cloud env set MONGODB_URL "your-atlas-connection-string"  # Set env var
 ```
 
 ---
 
 ## What's Done vs What's Left
 
-### Done (Sufyan)
+### Done — Frontend (Sufyan)
 - [x] Landing page with 8 animated sections
 - [x] Auth pages (login + signup) with demo credentials
-- [x] Dashboard (overview, upload, score, transactions, settings)
-- [x] Responsive sidebar + mobile hamburger
+- [x] Dashboard (overview with real data, upload, score with real data, transactions, settings)
+- [x] Responsive sidebar with real user name + working sign out
 - [x] Framer Motion animations + Lenis smooth scroll
 - [x] Tailwind v4 custom theme
 - [x] Deployed to Vercel
-- [x] Backend structure (uv + FastAPI + CORS)
+- [x] Frontend connected to backend (api.ts → all endpoints)
 
-### Left (Saad — Backend)
-- [ ] Implement actual auth (JWT tokens, password hashing)
-- [ ] Connect upload endpoint to file processing
-- [ ] Implement credit score calculation with real data
-- [ ] Pandas data processing pipeline
-- [ ] OCR integration for receipt/invoice extraction
-- [ ] In-memory storage (users dict, transactions dict)
-- [ ] Connect frontend to backend API calls
+### Done — Backend (Saad)
+- [x] FastAPI app with CORS configuration
+- [x] JWT auth (login + signup with bcrypt password hashing)
+- [x] File upload endpoint (saves to /tmp/msme_uploads)
+- [x] Credit score calculation (5-factor weighted scoring)
+- [x] File processing: CSV, Excel, WhatsApp txt, OCR (pytesseract)
+- [x] Transactions endpoint
+- [x] User profile endpoint (returns real user + latest score from MongoDB)
+- [x] MongoDB integration (motor async driver)
+- [x] Pydantic models (User, Business, Score)
 
-### Left (Marjan — Data & Integration)
-- [ ] Prepare demo data (WhatsApp exports, receipts, Excel files)
-- [ ] End-to-end testing
-- [ ] Demo flow rehearsal
+### Done — Integration
+- [x] Frontend → Backend connection verified (all 5 endpoints working)
+- [x] Demo credentials work end-to-end (signup → login → upload → score → dashboard)
+- [x] Dashboard shows real user name, score, transactions
+- [x] Sidebar shows real user name + email from localStorage
+- [x] Sign out clears localStorage and redirects to login
+
+### Left — Deployment
+- [ ] Create MongoDB Atlas account (free) — needed for cloud database
+- [ ] Deploy backend to FastAPI Cloud (`fastapi deploy`)
+- [ ] Set MONGODB_URL env var on FastAPI Cloud
+- [ ] Set NEXT_PUBLIC_API_URL env var on Vercel (point to FastAPI Cloud URL)
+- [ ] Update CORS on backend to allow Vercel domain
+
+### Left — Polish
+- [ ] AI-powered analysis (currently rule-based scoring)
+- [ ] Better OCR accuracy for receipt processing
+- [ ] WhatsApp chat parsing improvements
+- [ ] Bank dashboard view (currently only SME view)
+- [ ] Settings page functionality
+- [ ] Error handling improvements
+- [ ] Loading states for all pages
 
 ---
 
@@ -345,5 +403,25 @@ uvicorn main:app --reload  # Alternative run command
 
 ## Git Branches
 
-- `main` — Production (frontend complete)
-- `backend-setup` — Backend structure (PR pending)
+- `main` — Production (frontend + backend, all connected)
+- `backend-setup` — Backend structure (merged into main)
+
+---
+
+## Deployment Architecture
+
+```
+┌─────────────────┐         ┌─────────────────────┐
+│  Vercel (Frontend)│  HTTPS │  FastAPI Cloud (Backend)│
+│  localhost:3000  │ ──────> │  *.fastapicloud.dev  │
+│                  │         │                       │
+│  NEXT_PUBLIC_    │         │  MONGODB_URL env var  │
+│  API_URL env var │         │  → connects to Atlas  │
+└─────────────────┘         └──────────┬────────────┘
+                                       │
+                                       ▼
+                            ┌─────────────────────┐
+                            │  MongoDB Atlas (Cloud)│
+                            │  Cluster: smart_msme │
+                            └─────────────────────┘
+```

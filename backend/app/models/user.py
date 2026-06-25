@@ -1,25 +1,21 @@
 from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
 
-class UserBase(BaseModel):
-    email: str
+class UserCreate(BaseModel):
     name: str
+    email: str
+    password: str
     type: str  # "sme" or "bank"
 
-class UserCreate(UserBase):
+class UserLogin(BaseModel):
+    email: str
     password: str
 
-class User(UserBase):
-    id: int
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
+class UserOut(BaseModel):
+    id: str
+    name: str
+    email: str
+    type: str
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    email: Optional[str] = None
+    token: str
+    user: UserOut

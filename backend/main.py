@@ -1,39 +1,42 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-import os
-
+from contextlib import asynccontextmanager
+from app.core.database import connect_db, close_db
 from app.api.auth import router as auth_router
 from app.api.score import router as score_router
+from app.core.config import settings
 
-load_dotenv()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await connect_db()
+    yield
+    await close_db()
 
 app = FastAPI(
     title="Smart MSME Credit Navigator API",
     description="AI-powered credit scoring for Pakistani SMEs",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend dev server
+    allow_origins=[settings.FRONTEND_URL, "https://sega-smart-credit.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(score_router, prefix="/api", tags=["core"])
+
 @app.get("/")
 async def root():
-    return {"message": "Smart MSME Credit Navigator API"}
+    return {"message": "Smart MSME Credit Navigator API is running ✅"}
 
 @app.get("/health")
-async def health_check():
+async def health():
     return {"status": "healthy"}
-
-# Include API routers
-app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-app.include_router(score_router, prefix="/api", tags=["score"])
 
 if __name__ == "__main__":
     import uvicorn

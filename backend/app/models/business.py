@@ -1,29 +1,25 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
 
-class TransactionBase(BaseModel):
-    date: datetime
+class Transaction(BaseModel):
+    id: str
+    date: str
     amount: float
     description: str
-    type: str  # "income" or "expense"
+    type: str
+    category: str
 
-class Transaction(TransactionBase):
-    id: int
-    user_id: int
-    category: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+class FactorScore(BaseModel):
+    score: float
+    weight: float
+    name: str
 
 class CreditScore(BaseModel):
-    score: int
+    score: float
     factors: dict
     recommendations: List[str]
-    potential_score: int
+    potential_score: float
 
 class FileUpload(BaseModel):
-    id: str
-    filename: str
+    fileId: str
     status: str
-    uploaded_at: datetime

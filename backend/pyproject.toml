@@ -1,0 +1,12 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Smart MSME Credit Navigator API - AI-powered credit scoring for Pakistani SMEs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.138.0",
+    "python-dotenv>=1.2.2",
+    "uvicorn>=0.49.0",
+    "pydantic-settings>=2.0.0",
+]

@@ -242,8 +242,11 @@ uv run main.py    # Start dev server
 **Backend** (`.env`):
 
 ```env
-DATABASE_URL=sqlite:///./test.db
-SECRET_KEY=your-secret-key
+MONGODB_URL=mongodb://localhost:27017
+DATABASE_NAME=smart_msme
+SECRET_KEY=supersecretkey123changethis
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
 FRONTEND_URL=http://localhost:3000
 DEBUG=True
 ```
